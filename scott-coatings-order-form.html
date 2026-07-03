@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Scott Coatings — Materials Order Request</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-authentication-library/2.38.1/msal-browser.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f4f5f7; min-height: 100vh; }
+
+.sc-header { background: #1a2236; padding: 1rem 1.25rem; display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 100; }
+.sc-logo-mark { width: 36px; height: 36px; flex-shrink: 0; }
+.sc-header-title { font-size: 15px; font-weight: 600; color: #fff; letter-spacing: 0.01em; }
+.sc-header-sub { font-size: 11px; color: #8fa0c4; margin-top: 1px; }
+
+.sc-body { padding: 1.25rem; display: flex; flex-direction: column; gap: 1.25rem; max-width: 680px; margin: 0 auto; }
+
+.sc-section { background: #fff; border: 1px solid #e2e5ea; border-radius: 12px; padding: 1rem 1.1rem; }
+.sc-section-label { font-size: 11px; font-weight: 600; color: #8fa0c4; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 0.75rem; }
+
+.field-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 0.75rem; }
+.field-row:last-child { margin-bottom: 0; }
+.field-label { font-size: 13px; color: #444; font-weight: 500; }
+
+input[type=text], input[type=email], input[type=datetime-local], textarea, select {
+  font-size: 14px; border: 1px solid #d0d5dd; border-radius: 8px; padding: 8px 10px;
+  background: #fff; color: #1a2236; width: 100%; font-family: inherit;
+}
+input:focus, textarea:focus, select:focus { outline: none; border-color: #3d7ed4; box-shadow: 0 0 0 3px rgba(61,126,212,0.12); }
+textarea { resize: none; line-height: 1.5; }
+
+.orderer-row { display: flex; gap: 8px; }
+.orderer-row .field-row { flex: 1; }
+
+.search-wrap { position: relative; }
+.search-wrap input { padding-left: 34px; }
+.search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #aaa; font-size: 15px; pointer-events: none; }
+.check-icon { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: #15803d; font-size: 16px; display: none; }
+
+.dropdown { background: #fff; border: 1px solid #d0d5dd; border-radius: 8px; max-height: 220px; overflow-y: auto; margin-top: 4px; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+
+.mpi-option { padding: 9px 10px; cursor: pointer; border-bottom: 1px solid #f0f2f5; transition: background 0.1s; }
+.mpi-option:last-child { border-bottom: none; }
+.mpi-option:hover { background: #f7f9fc; }
+.mpi-name { font-size: 13px; font-weight: 600; color: #1a2236; }
+.mpi-meta { font-size: 11px; color: #888; margin-top: 2px; }
+
+.stage-badge { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 20px; margin-left: 6px; vertical-align: middle; }
+.stage-con { background: #e0f2fe; color: #0369a1; }
+.stage-precon { background: #f0fdf4; color: #15803d; }
+
+.autofill-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 0.75rem; }
+.autofill-field { display: flex; flex-direction: column; gap: 3px; }
+.autofill-label { font-size: 11px; color: #888; }
+.autofill-val { font-size: 13px; color: #1a2236; padding: 6px 8px; background: #f7f9fc; border: 1px solid #e2e5ea; border-radius: 6px; min-height: 32px; }
+.autofill-val.empty { color: #aaa; font-style: italic; font-size: 12px; }
+.autofill-full { grid-column: 1 / -1; }
+
+.pick-toggle { display: flex; gap: 8px; }
+.pick-btn { flex: 1; padding: 9px 6px; border: 1px solid #d0d5dd; border-radius: 8px; background: #fff; color: #555; font-size: 13px; cursor: pointer; text-align: center; transition: all 0.12s; font-family: inherit; }
+.pick-btn.active { background: #1a2236; color: #fff; border-color: #1a2236; font-weight: 600; }
+
+.item-option { display: flex; align-items: center; gap: 10px; padding: 8px 10px; cursor: pointer; border-bottom: 1px solid #f0f2f5; transition: background 0.1s; }
+.item-option:last-child { border-bottom: none; }
+.item-option:hover { background: #f7f9fc; }
+
+.item-thumb { width: 36px; height: 36px; border-radius: 6px; object-fit: cover; border: 1px solid #e2e5ea; flex-shrink: 0; background: #f4f5f7; }
+.item-thumb-placeholder { width: 36px; height: 36px; border-radius: 6px; background: #f4f5f7; border: 1px solid #e2e5ea; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 10px; font-weight: 700; color: #888; }
+.item-option-info { flex: 1; min-width: 0; }
+.item-opt-name { font-size: 13px; font-weight: 600; color: #1a2236; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.item-opt-meta { font-size: 11px; color: #888; margin-top: 1px; }
+
+.type-badge { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 20px; flex-shrink: 0; }
+.badge-PPE { background: #fde8e8; color: #b91c1c; }
+.badge-SUN { background: #e0f2fe; color: #0369a1; }
+.badge-OEQ { background: #f0fdf4; color: #15803d; }
+.badge-default { background: #f0f2f5; color: #555; }
+
+.cart-items { display: flex; flex-direction: column; gap: 8px; }
+.cart-empty { font-size: 13px; color: #aaa; text-align: center; padding: 1rem 0; }
+
+.cart-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: #f7f9fc; border: 1px solid #e2e5ea; border-radius: 8px; }
+.cart-thumb { width: 32px; height: 32px; border-radius: 5px; object-fit: cover; border: 1px solid #e2e5ea; flex-shrink: 0; background: #eee; }
+.cart-thumb-placeholder { width: 32px; height: 32px; border-radius: 5px; background: #e2e5ea; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; color: #888; flex-shrink: 0; }
+.cart-item-info { flex: 1; min-width: 0; }
+.cart-item-name { font-size: 13px; font-weight: 600; color: #1a2236; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cart-item-sub { font-size: 11px; color: #888; }
+
+.qty-control { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.qty-btn { width: 28px; height: 28px; border: 1px solid #d0d5dd; border-radius: 6px; background: #fff; color: #1a2236; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; font-family: inherit; }
+.qty-btn:hover { background: #f0f2f5; }
+.qty-val { font-size: 14px; font-weight: 600; min-width: 24px; text-align: center; color: #1a2236; }
+
+.remove-btn { background: none; border: none; color: #bbb; font-size: 18px; cursor: pointer; padding: 2px; flex-shrink: 0; line-height: 1; }
+.remove-btn:hover { color: #e24b4a; }
+
+.submit-btn { width: 100%; padding: 13px; background: #1a2236; color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; font-family: inherit; transition: background 0.15s; }
+.submit-btn:hover { background: #253252; }
+.submit-btn:disabled { background: #ccc; cursor: not-allowed; }
+
+.auth-banner { background: #fff8e1; border: 1px solid #f6cc50; border-radius: 8px; padding: 10px 14px; font-size: 13px; color: #7a5c00; margin-bottom: 0.75rem; display: none; }
+.error-state { text-align: center; padding: 1rem; color: #b91c1c; font-size: 13px; background: #fde8e8; border-radius: 8px; margin-bottom: 0.75rem; display: none; }
+.loading-pill { font-size: 12px; color: #888; padding: 6px 0; display: none; }
+
+.success-screen { display: none; flex-direction: column; align-items: center; gap: 1rem; padding: 3rem 1.25rem; text-align: center; }
+.success-icon { width: 56px; height: 56px; background: #e0f2fe; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 28px; }
+.success-title { font-size: 18px; font-weight: 600; color: #1a2236; }
+.success-body { font-size: 14px; color: #555; line-height: 1.6; max-width: 280px; }
+.new-order-btn { padding: 10px 24px; background: #fff; border: 1px solid #d0d5dd; border-radius: 8px; font-size: 14px; color: #1a2236; cursor: pointer; margin-top: 0.5rem; font-family: inherit; }
+.new-order-btn:hover { background: #f7f9fc; }
+
+.spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 8px; vertical-align: middle; }
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div class="sc-header">
+  <svg class="sc-logo-mark" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect width="36" height="36" rx="6" fill="#253252"/>
+    <path d="M8 26 L18 10 L28 26" stroke="#c8a96e" stroke-width="3" stroke-linejoin="round" fill="none"/>
+    <path d="M12 20 L24 20" stroke="#c8a96e" stroke-width="2.5" stroke-linecap="round"/>
+  </svg>
+  <div>
+    <div class="sc-header-title">Scott Coatings</div>
+    <div class="sc-header-sub">Materials order request</div>
+  </div>
+</div>
+
+<div id="form-view">
+  <div class="sc-body">
+
+    <div id="auth-banner" class="auth-banner">Signing in to SharePoint… If this persists, refresh the page.</div>
+
+    <div class="sc-section">
+      <div class="sc-section-label">Orderer</div>
+      <div class="orderer-row">
+        <div class="field-row">
+          <label class="field-label">Your name</label>
+          <input type="text" id="orderer-name" placeholder="First Last" />
+        </div>
+        <div class="field-row">
+          <label class="field-label">Your email</label>
+          <input type="email" id="orderer-email" placeholder="you@scottcoatings.com" />
+        </div>
+      </div>
+    </div>
+
+    <div class="sc-section">
+      <div class="sc-section-label">Job</div>
+      <div id="mpi-error" class="error-state"></div>
+      <div class="loading-pill" id="mpi-loading">Loading projects…</div>
+      <div class="field-row">
+        <label class="field-label">Search job name</label>
+        <div class="search-wrap">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="job-search" placeholder="Type job name or number…" oninput="filterJobs(this.value)" onfocus="showJobDropdown()" autocomplete="off" />
+          <span class="check-icon" id="job-check">✓</span>
+        </div>
+        <div class="dropdown" id="mpi-dropdown"></div>
+      </div>
+      <div class="autofill-grid">
+        <div class="autofill-field">
+          <span class="autofill-label">Project number</span>
+          <div class="autofill-val empty" id="af-number">—</div>
+        </div>
+        <div class="autofill-field">
+          <span class="autofill-label">PM</span>
+          <div class="autofill-val empty" id="af-pm">—</div>
+        </div>
+        <div class="autofill-field autofill-full">
+          <span class="autofill-label">Job site address</span>
+          <div class="autofill-val empty" id="af-address">—</div>
+        </div>
+        <div class="autofill-field autofill-full">
+          <span class="autofill-label">Client</span>
+          <div class="autofill-val empty" id="af-client">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sc-section">
+      <div class="sc-section-label">Pickup / delivery</div>
+      <div class="field-row">
+        <label class="field-label">Pick location</label>
+        <div class="pick-toggle">
+          <button class="pick-btn active" id="btn-shop" onclick="setPick('SC Shop')">SC Shop</button>
+          <button class="pick-btn" id="btn-site" onclick="setPick('Job Site')">Job site delivery</button>
+        </div>
+      </div>
+      <div class="field-row">
+        <label class="field-label">Time requested</label>
+        <input type="datetime-local" id="time-requested" />
+      </div>
+    </div>
+
+    <div class="sc-section">
+      <div class="sc-section-label">Items</div>
+      <div id="items-error" class="error-state"></div>
+      <div class="loading-pill" id="items-loading">Loading items…</div>
+      <div class="search-wrap" style="margin-bottom:0.75rem;">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="item-search" placeholder="Search paint, sundries, PPE…" oninput="filterItems(this.value)" onfocus="showItemDropdown()" autocomplete="off" />
+      </div>
+      <div class="dropdown" id="item-dropdown"></div>
+      <div class="cart-items" id="cart-items">
+        <div class="cart-empty">No items added yet.</div>
+      </div>
+    </div>
+
+    <div class="sc-section">
+      <div class="sc-section-label">Notes</div>
+      <div class="field-row">
+        <textarea id="misc-notes" rows="3" placeholder="Anything accounting or the shop should know…"></textarea>
+      </div>
+    </div>
+
+    <button class="submit-btn" id="submit-btn" onclick="submitOrder()">Submit order request</button>
+  </div>
+</div>
+
+<div class="success-screen" id="success-view">
+  <div class="success-icon">✓</div>
+  <div class="success-title">Order submitted</div>
+  <div class="success-body">Your request has been sent to the accounting team. You'll get a confirmation email at <strong id="confirm-email"></strong> once it's in process.</div>
+  <button class="new-order-btn" onclick="resetForm()">Submit another order</button>
+</div>
+
+<script>
+// ── CONFIG ── update TENANT_ID if Rob provides it; leave CLIENT_ID as-is for cookie auth fallback
+const SITE = "https://scottcoatings.sharepoint.com/sites/ProjectOperations";
+const TENANT_ID = "common"; // Replace with Scott Coatings tenant ID if MSAL is configured
+const CLIENT_ID = ""; // Leave blank to use cookie-based auth (Script Editor path)
+
+const ITEMS_LIST = "SUN";
+const MPI_LIST = "Master Project Index";
+const ORDERS_LIST = "Project Orders";
+
+// Active/Pre-con statuses to filter MPI — matches SP column values exactly
+const ACTIVE_STATUSES = ["Course of Construction", "Pre-Construction"];
+
+let msalInstance = null;
+let accessToken = null;
+let allJobs = [], allItems = [], filteredJobs = [], filteredItems = [];
+let selectedJob = null, cart = {}, pickLocation = "SC Shop";
+
+// ── AUTH ──
+// Two modes:
+// 1. Script Editor (same domain): cookies work, no MSAL needed
+// 2. iframe from external host: MSAL token required — set CLIENT_ID above
+async function getToken() {
+  if (accessToken) return accessToken;
+  if (!CLIENT_ID) return null; // rely on credentials:include (Script Editor path)
+  try {
+    msalInstance = new msal.PublicClientApplication({
+      auth: { clientId: CLIENT_ID, authority: `https://login.microsoftonline.com/${TENANT_ID}` },
+      cache: { cacheLocation: "sessionStorage" }
+    });
+    await msalInstance.initialize();
+    let result;
+    try {
+      result = await msalInstance.acquireTokenSilent({
+        scopes: [`${SITE}/.default`],
+        account: msalInstance.getAllAccounts()[0]
+      });
+    } catch {
+      result = await msalInstance.acquireTokenPopup({ scopes: [`${SITE}/.default`] });
+    }
+    accessToken = result.accessToken;
+    return accessToken;
+  } catch (e) {
+    console.warn("MSAL auth failed, falling back to cookie auth", e);
+    return null;
+  }
+}
+
+async function spHeaders(extra = {}) {
+  const token = await getToken();
+  const headers = {
+    "Accept": "application/json;odata=verbose",
+    "Content-Type": "application/json;odata=verbose",
+    ...extra
+  };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return headers;
+}
+
+async function spFetch(url) {
+  const token = await getToken();
+  const res = await fetch(url, {
+    headers: await spHeaders(),
+    credentials: token ? "omit" : "include"
+  });
+  if (!res.ok) throw new Error(`SP ${res.status}: ${res.statusText}`);
+  const data = await res.json();
+  return data.d?.results ?? [];
+}
+
+async function getDigest() {
+  const token = await getToken();
+  const res = await fetch(`${SITE}/_api/contextinfo`, {
+    method: "POST",
+    headers: await spHeaders(),
+    credentials: token ? "omit" : "include"
+  });
+  const data = await res.json();
+  return data.d.GetContextWebInformation.FormDigestValue;
+}
+
+async function spPost(listName, body) {
+  const metaRes = await fetch(
+    `${SITE}/_api/web/lists/getbytitle('${enc(listName)}')?$select=ListItemEntityTypeFullName`,
+    { headers: await spHeaders(), credentials: (await getToken()) ? "omit" : "include" }
+  );
+  const meta = await metaRes.json();
+  const type = meta.d.ListItemEntityTypeFullName;
+  const digest = await getDigest();
+  const token = await getToken();
+
+  const res = await fetch(
+    `${SITE}/_api/web/lists/getbytitle('${enc(listName)}')/items`,
+    {
+      method: "POST",
+      headers: { ...(await spHeaders()), "X-RequestDigest": digest },
+      credentials: token ? "omit" : "include",
+      body: JSON.stringify({ __metadata: { type }, ...body })
+    }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error?.message?.value || `Submit failed (${res.status})`);
+  }
+  return res.json();
+}
+
+function enc(s) { return encodeURIComponent(s); }
+
+// ── DATA LOADING ──
+async function loadMPI() {
+  show("mpi-loading");
+  hide("mpi-error");
+  try {
+    const statusFilter = ACTIVE_STATUSES
+      .map(s => `Project_x0020_Status eq '${encodeURIComponent(s)}'`)
+      .join(" or ");
+
+    const results = await spFetch(
+      `${SITE}/_api/web/lists/getbytitle('${enc(MPI_LIST)}')/items` +
+      `?$select=Id,Title,Project_x0020_Name,Project_x0020_Location,PM,Client_x0020_Company,Project_x0020_Status` +
+      `&$filter=${statusFilter}` +
+      `&$orderby=Project_x0020_Name` +
+      `&$top=500`
+    );
+    allJobs = results
+      .map(r => ({
+        id: r.Id,
+        name: r.Project_x0020_Name || "",
+        number: r.Title || "",
+        address: r.Project_x0020_Location || "",
+        pm: r.PM || "",
+        client: r.Client_x0020_Company || "",
+        status: r.Project_x0020_Status || ""
+      }))
+      .filter(j => j.name);
+    filteredJobs = [...allJobs];
+  } catch (e) {
+    showError("mpi-error", "Could not load projects. Check SharePoint connection.");
+    console.error("MPI load:", e);
+  } finally {
+    hide("mpi-loading");
+  }
+}
+
+async function loadItems() {
+  show("items-loading");
+  hide("items-error");
+  try {
+    const results = await spFetch(
+      `${SITE}/_api/web/lists/getbytitle('${enc(ITEMS_LIST)}')/items` +
+      `?$select=Id,Title,Description,SageID,Manufacturer,VendorID,Packaging,ItemPicture` +
+      `&$top=500`
+    );
+    allItems = results.map(r => ({
+      id: r.Id,
+      name: r.Title || r.Description || "Unnamed item",
+      description: r.Description || "",
+      type: r.SageID || "",
+      mfr: r.Manufacturer || "",
+      vendorId: r.VendorID || "",
+      pkg: r.Packaging || "",
+      picture: parseThumbnail(r.ItemPicture)
+    }));
+    filteredItems = [...allItems];
+  } catch (e) {
+    showError("items-error", "Could not load items list. Check SharePoint connection.");
+    console.error("Items load:", e);
+  } finally {
+    hide("items-loading");
+  }
+}
+
+function parseThumbnail(val) {
+  if (!val) return null;
+  try {
+    const obj = typeof val === "string" ? JSON.parse(val) : val;
+    if (obj.serverRelativeUrl) return `${SITE.split("/sites/")[0]}${obj.serverRelativeUrl}`;
+    return obj.thumbnailUrl || obj.url || null;
+  } catch { return null; }
+}
+
+// ── UI HELPERS ──
+function show(id) { const el = document.getElementById(id); if (el) el.style.display = "block"; }
+function hide(id) { const el = document.getElementById(id); if (el) el.style.display = "none"; }
+function showError(id, msg) { const el = document.getElementById(id); if (el) { el.textContent = msg; el.style.display = "block"; } }
+
+function thumbEl(url, type, size) {
+  const s = size === "sm" ? 32 : 36;
+  const cls = size === "sm" ? "cart-thumb" : "item-thumb";
+  const pcls = size === "sm" ? "cart-thumb-placeholder" : "item-thumb-placeholder";
+  if (url) return `<img src="${url}" class="${cls}" width="${s}" height="${s}" alt="" onerror="this.outerHTML='<div class=\\'${pcls}\\'>${(type||"?").substring(0,3)}</div>'" />`;
+  return `<div class="${pcls}">${(type || "?").substring(0, 3)}</div>`;
+}
+
+function badgeEl(type) {
+  const cls = ["PPE","SUN","OEQ"].includes(type) ? `badge-${type}` : "badge-default";
+  return `<span class="type-badge ${cls}">${type || "—"}</span>`;
+}
+
+function stageEl(status) {
+  const cls = status === "Course of Construction" ? "stage-con" : "stage-precon";
+  const label = status === "Course of Construction" ? "Active" : "Pre-con";
+  return `<span class="stage-badge ${cls}">${label}</span>`;
+}
+
+// ── JOB SEARCH ──
+function filterJobs(q) {
+  const lower = q.toLowerCase();
+  filteredJobs = q ? allJobs.filter(j =>
+    j.name.toLowerCase().includes(lower) ||
+    j.number.includes(lower) ||
+    j.pm.toLowerCase().includes(lower) ||
+    j.client.toLowerCase().includes(lower)
+  ) : allJobs;
+  showJobDropdown();
+  if (selectedJob && document.getElementById("job-search").value !== selectedJob.name) {
+    selectedJob = null;
+    hide("job-check");
+    clearAutofill();
+  }
+}
+
+function showJobDropdown() {
+  const dd = document.getElementById("mpi-dropdown");
+  if (!filteredJobs.length) { dd.style.display = "none"; return; }
+  dd.innerHTML = filteredJobs.slice(0, 50).map(j => `
+    <div class="mpi-option" onclick="selectJob(${j.id})">
+      <div class="mpi-name">${j.name}${stageEl(j.status)}</div>
+      <div class="mpi-meta">#${j.number} · ${j.pm} · ${j.client}</div>
+    </div>`).join("");
+  dd.style.display = "block";
+}
+
+function selectJob(id) {
+  selectedJob = allJobs.find(j => j.id === id);
+  document.getElementById("job-search").value = selectedJob.name;
+  document.getElementById("mpi-dropdown").style.display = "none";
+  show("job-check");
+  setAF("af-number", selectedJob.number);
+  setAF("af-pm", selectedJob.pm);
+  setAF("af-address", selectedJob.address);
+  setAF("af-client", selectedJob.client);
+}
+
+function setAF(id, val) {
+  const el = document.getElementById(id);
+  el.textContent = val || "—";
+  el.classList.toggle("empty", !val);
+}
+
+function clearAutofill() {
+  ["af-number","af-pm","af-address","af-client"].forEach(id => {
+    const el = document.getElementById(id);
+    el.textContent = "—";
+    el.classList.add("empty");
+  });
+}
+
+// ── ITEM SEARCH ──
+function filterItems(q) {
+  const lower = q.toLowerCase();
+  filteredItems = q ? allItems.filter(i =>
+    i.name.toLowerCase().includes(lower) ||
+    i.description.toLowerCase().includes(lower) ||
+    i.type.toLowerCase().includes(lower) ||
+    i.mfr.toLowerCase().includes(lower)
+  ) : allItems;
+  showItemDropdown();
+}
+
+function showItemDropdown() {
+  const dd = document.getElementById("item-dropdown");
+  if (!filteredItems.length) { dd.style.display = "none"; return; }
+  dd.innerHTML = filteredItems.slice(0, 50).map(item => `
+    <div class="item-option" onclick="addItem(${item.id})">
+      ${thumbEl(item.picture, item.type, "lg")}
+      <div class="item-option-info">
+        <div class="item-opt-name">${item.name}</div>
+        <div class="item-opt-meta">${item.mfr}${item.pkg ? " · "+item.pkg : ""}${item.vendorId ? " · "+item.vendorId : ""}</div>
+      </div>
+      ${badgeEl(item.type)}
+    </div>`).join("");
+  dd.style.display = "block";
+}
+
+// ── CART ──
+function addItem(id) {
+  if (cart[id]) { cart[id].qty++; }
+  else { cart[id] = { ...allItems.find(i => i.id === id), qty: 1 }; }
+  document.getElementById("item-search").value = "";
+  filteredItems = [...allItems];
+  document.getElementById("item-dropdown").style.display = "none";
+  renderCart();
+}
+
+function changeQty(id, delta) {
+  if (!cart[id]) return;
+  cart[id].qty += delta;
+  if (cart[id].qty <= 0) delete cart[id];
+  renderCart();
+}
+
+function removeItem(id) { delete cart[id]; renderCart(); }
+
+function renderCart() {
+  const el = document.getElementById("cart-items");
+  const keys = Object.keys(cart);
+  if (!keys.length) { el.innerHTML = '<div class="cart-empty">No items added yet.</div>'; return; }
+  el.innerHTML = keys.map(id => {
+    const it = cart[id];
+    return `<div class="cart-item">
+      ${thumbEl(it.picture, it.type, "sm")}
+      <div class="cart-item-info">
+        <div class="cart-item-name">${it.name}</div>
+        <div class="cart-item-sub">${it.type}${it.pkg ? " · "+it.pkg : ""}</div>
+      </div>
+      <div class="qty-control">
+        <button class="qty-btn" onclick="changeQty(${id},-1)">−</button>
+        <span class="qty-val">${it.qty}</span>
+        <button class="qty-btn" onclick="changeQty(${id},1)">+</button>
+      </div>
+      <button class="remove-btn" onclick="removeItem(${id})" aria-label="Remove">✕</button>
+    </div>`;
+  }).join("");
+}
+
+function setPick(loc) {
+  pickLocation = loc;
+  document.getElementById("btn-shop").classList.toggle("active", loc === "SC Shop");
+  document.getElementById("btn-site").classList.toggle("active", loc === "Job Site");
+}
+
+function buildItemsSummary() {
+  return Object.values(cart).map(it =>
+    `${it.name} (${it.type}) × ${it.qty} ${it.pkg}`.trim()
+  ).join("\n");
+}
+
+// ── SUBMIT ──
+async function submitOrder() {
+  const name = document.getElementById("orderer-name").value.trim();
+  const email = document.getElementById("orderer-email").value.trim();
+  if (!name || !email) { alert("Please enter your name and email."); return; }
+  if (!selectedJob) { alert("Please select a job from the list."); return; }
+  if (!Object.keys(cart).length) { alert("Please add at least one item."); return; }
+
+  const btn = document.getElementById("submit-btn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Submitting…';
+
+  try {
+    const timeVal = document.getElementById("time-requested").value;
+    const notes = document.getElementById("misc-notes").value.trim();
+
+    await spPost(ORDERS_LIST, {
+      Title: `Order – ${selectedJob.name} – ${new Date().toLocaleDateString()}`,
+      OrdererName: name,
+      OrdererEmail: email,
+      Job_x0020_Name: selectedJob.name,
+      Project_x0020_Number: selectedJob.number,
+      Job_x0020_Site_x0020_Address: selectedJob.address,
+      Pick_x0020_Location: pickLocation,
+      Time_x0020_Requested: timeVal ? new Date(timeVal).toISOString() : null,
+      Items_x0020_Ordered: buildItemsSummary(),
+      Misc_x0020_Notes: notes || null,
+      Status: "Received"
+    });
+
+    document.getElementById("confirm-email").textContent = email;
+    document.getElementById("form-view").style.display = "none";
+    document.getElementById("success-view").style.display = "flex";
+  } catch (e) {
+    alert("Submission failed: " + e.message + "\n\nMake sure you're signed into SharePoint and the Project Orders list columns match.");
+    btn.disabled = false;
+    btn.innerHTML = "Submit order request";
+  }
+}
+
+// ── RESET ──
+function resetForm() {
+  cart = {}; selectedJob = null; pickLocation = "SC Shop";
+  filteredJobs = [...allJobs]; filteredItems = [...allItems];
+  ["orderer-name","orderer-email","job-search","misc-notes","item-search"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("time-requested").value = "";
+  hide("job-check");
+  document.getElementById("item-dropdown").style.display = "none";
+  document.getElementById("mpi-dropdown").style.display = "none";
+  clearAutofill();
+  setPick("SC Shop");
+  renderCart();
+  document.getElementById("form-view").style.display = "block";
+  document.getElementById("success-view").style.display = "none";
+}
+
+document.addEventListener("click", function(e) {
+  const jobInput = document.getElementById("job-search");
+  const itemInput = document.getElementById("item-search");
+  const mpiDd = document.getElementById("mpi-dropdown");
+  const itemDd = document.getElementById("item-dropdown");
+  if (!jobInput.contains(e.target) && !mpiDd.contains(e.target)) mpiDd.style.display = "none";
+  if (!itemInput.contains(e.target) && !itemDd.contains(e.target)) itemDd.style.display = "none";
+});
+
+// ── INIT ──
+(async () => {
+  show("auth-banner");
+  await Promise.all([loadMPI(), loadItems()]);
+  hide("auth-banner");
+})();
+</script>
+</body>
+</html>
