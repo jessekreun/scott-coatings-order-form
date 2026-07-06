@@ -132,6 +132,10 @@ textarea { resize: none; line-height: 1.5; }
   <div class="sc-body">
 
     <div id="auth-banner" class="auth-banner">Signing in to SharePoint… If this persists, refresh the page.</div>
+    <div id="signin-banner" style="display:none; background:#1a2236; border-radius:10px; padding:1rem 1.1rem; margin-bottom:0; text-align:center;">
+      <div style="color:#8fa0c4; font-size:13px; margin-bottom:10px;">Sign in to load jobs and items from SharePoint.</div>
+      <button onclick="signIn()" style="background:#c8a96e; color:#1a2236; border:none; border-radius:8px; padding:9px 24px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit;">Sign in with Microsoft</button>
+    </div>
 
     <div class="sc-section">
       <div class="sc-section-label">Orderer</div>
@@ -250,29 +254,27 @@ let selectedJob = null, cart = {}, pickLocation = "SC Shop";
 // 1. Script Editor (same domain): cookies work, no MSAL needed
 // 2. iframe from external host: MSAL token required — set CLIENT_ID above
 async function getToken() {
+  // Returns cached token acquired via signIn() or silent refresh on init.
+  // Never triggers a popup automatically — user must click Sign In.
   if (accessToken) return accessToken;
-  if (!CLIENT_ID) return null; // rely on credentials:include (Script Editor path)
+  if (!CLIENT_ID) return null;
+  // Try silent refresh if we have an account cached
   try {
-    msalInstance = new msal.PublicClientApplication({
-      auth: { clientId: CLIENT_ID, authority: `https://login.microsoftonline.com/${TENANT_ID}` },
-      cache: { cacheLocation: "sessionStorage" }
-    });
-    await msalInstance.initialize();
-    let result;
-    try {
-      result = await msalInstance.acquireTokenSilent({
-        scopes: [`${SITE}/.default`],
-        account: msalInstance.getAllAccounts()[0]
-      });
-    } catch {
-      result = await msalInstance.acquireTokenPopup({ scopes: [`${SITE}/.default`] });
+    if (msalInstance) {
+      const accounts = msalInstance.getAllAccounts();
+      if (accounts.length > 0) {
+        const result = await msalInstance.acquireTokenSilent({
+          scopes: ["https://scottcoatings.sharepoint.com/.default"],
+          account: accounts[0]
+        });
+        accessToken = result.accessToken;
+        return accessToken;
+      }
     }
-    accessToken = result.accessToken;
-    return accessToken;
   } catch (e) {
-    console.warn("MSAL auth failed, falling back to cookie auth", e);
-    return null;
+    console.warn("Silent token refresh failed:", e);
   }
+  return null;
 }
 
 // ── PROXY HELPER ──
@@ -571,11 +573,69 @@ document.addEventListener("click", function(e) {
   if (!itemInput.contains(e.target) && !itemDd.contains(e.target)) itemDd.style.display = "none";
 });
 
+// ── SIGN IN ──
+async function signIn() {
+  hide("signin-banner");
+  show("auth-banner");
+  try {
+    // Force a fresh token via popup (user-gesture triggered)
+    accessToken = null;
+    if (!msalInstance) {
+      msalInstance = new msal.PublicClientApplication({
+        auth: { clientId: CLIENT_ID, authority: `https://login.microsoftonline.com/${TENANT_ID}` },
+        cache: { cacheLocation: "sessionStorage" }
+      });
+      await msalInstance.initialize();
+    }
+    const result = await msalInstance.acquireTokenPopup({
+      scopes: ["https://scottcoatings.sharepoint.com/.default"]
+    });
+    accessToken = result.accessToken;
+    await Promise.all([loadMPI(), loadItems()]);
+  } catch (e) {
+    console.error("Sign in failed:", e);
+    hide("auth-banner");
+    show("signin-banner");
+  }
+  hide("auth-banner");
+}
+
 // ── INIT ──
 (async () => {
-  show("auth-banner");
-  await Promise.all([loadMPI(), loadItems()]);
-  hide("auth-banner");
+  if (!CLIENT_ID) {
+    // Script Editor path — no MSAL needed
+    show("auth-banner");
+    await Promise.all([loadMPI(), loadItems()]);
+    hide("auth-banner");
+    return;
+  }
+
+  // Try silent token first
+  try {
+    msalInstance = new msal.PublicClientApplication({
+      auth: { clientId: CLIENT_ID, authority: `https://login.microsoftonline.com/${TENANT_ID}` },
+      cache: { cacheLocation: "sessionStorage" }
+    });
+    await msalInstance.initialize();
+    const accounts = msalInstance.getAllAccounts();
+    if (accounts.length > 0) {
+      show("auth-banner");
+      const result = await msalInstance.acquireTokenSilent({
+        scopes: ["https://scottcoatings.sharepoint.com/.default"],
+        account: accounts[0]
+      });
+      accessToken = result.accessToken;
+      await Promise.all([loadMPI(), loadItems()]);
+      hide("auth-banner");
+    } else {
+      // No cached session — show sign-in button, don't auto-popup
+      show("signin-banner");
+    }
+  } catch (e) {
+    console.warn("Silent token failed:", e);
+    hide("auth-banner");
+    show("signin-banner");
+  }
 })();
 </script>
 </body>
