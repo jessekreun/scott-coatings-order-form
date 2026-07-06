@@ -220,12 +220,10 @@ async function submitOrder(token, headers, rawBody) {
     Title: payload.Title,
     OrdererName: payload.OrdererName,
     OrdererEmail: payload.OrdererEmail,
-    Job_x0020_Name: payload.JobName,
-    Project_x0020_Number: payload.ProjectNumber,
-    Job_x0020_Site_x0020_Address: payload.JobAddress,
+    JobNameId: payload.JobNameId || null,
     Delivery_x0020_Location: payload.PickLocation,
     Delivery_x0020_Date: payload.TimeRequested || null,
-    Items_x0020_Ordered: payload.ItemsSummary,
+    Quantities_x0020_Requested: payload.ItemsSummary,
     Additional_x0020_Notes_x002f_Com: payload.Notes || null,
     Status: "Received"
   };
