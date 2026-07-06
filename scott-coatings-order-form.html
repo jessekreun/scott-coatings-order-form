@@ -275,94 +275,48 @@ async function getToken() {
   }
 }
 
-async function spHeaders(extra = {}) {
-  const token = await getToken();
-  const headers = {
-    "Accept": "application/json;odata=verbose",
-    "Content-Type": "application/json;odata=verbose",
-    ...extra
-  };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-  return headers;
-}
+// ── PROXY HELPER ──
+// All SharePoint calls go through the Netlify function to avoid CORS.
+// The browser MSAL token is passed in the Authorization header.
 
-async function spFetch(url) {
+const PROXY = "/.netlify/functions/sp-proxy";
+
+async function proxyGet(action) {
   const token = await getToken();
-  const res = await fetch(url, {
-    headers: await spHeaders(),
-    credentials: token ? "omit" : "include"
+  const res = await fetch(`${PROXY}?action=${action}`, {
+    headers: token ? { "Authorization": `Bearer ${token}` } : {}
   });
-  if (!res.ok) throw new Error(`SP ${res.status}: ${res.statusText}`);
-  const data = await res.json();
-  return data.d?.results ?? [];
-}
-
-async function getDigest() {
-  const token = await getToken();
-  const res = await fetch(`${SITE}/_api/contextinfo`, {
-    method: "POST",
-    headers: await spHeaders(),
-    credentials: token ? "omit" : "include"
-  });
-  const data = await res.json();
-  return data.d.GetContextWebInformation.FormDigestValue;
-}
-
-async function spPost(listName, body) {
-  const metaRes = await fetch(
-    `${SITE}/_api/web/lists/getbytitle('${enc(listName)}')?$select=ListItemEntityTypeFullName`,
-    { headers: await spHeaders(), credentials: (await getToken()) ? "omit" : "include" }
-  );
-  const meta = await metaRes.json();
-  const type = meta.d.ListItemEntityTypeFullName;
-  const digest = await getDigest();
-  const token = await getToken();
-
-  const res = await fetch(
-    `${SITE}/_api/web/lists/getbytitle('${enc(listName)}')/items`,
-    {
-      method: "POST",
-      headers: { ...(await spHeaders()), "X-RequestDigest": digest },
-      credentials: token ? "omit" : "include",
-      body: JSON.stringify({ __metadata: { type }, ...body })
-    }
-  );
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error?.message?.value || `Submit failed (${res.status})`);
+    throw new Error(err?.error || `Proxy ${res.status}`);
   }
   return res.json();
 }
 
-function enc(s) { return encodeURIComponent(s); }
+async function proxyPost(action, body) {
+  const token = await getToken();
+  const res = await fetch(`${PROXY}?action=${action}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { "Authorization": `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error || `Proxy ${res.status}`);
+  }
+  return res.json();
+}
 
 // ── DATA LOADING ──
 async function loadMPI() {
   show("mpi-loading");
   hide("mpi-error");
   try {
-    const statusFilter = ACTIVE_STATUSES
-      .map(s => `Project_x0020_Status eq '${encodeURIComponent(s)}'`)
-      .join(" or ");
-
-    const results = await spFetch(
-      `${SITE}/_api/web/lists/getbytitle('${enc(MPI_LIST)}')/items` +
-      `?$select=Id,Title,Project_x0020_Name,Project_x0020_Location,PM,Client_x0020_Company,Project_x0020_Status` +
-      `&$filter=${statusFilter}` +
-      `&$orderby=Project_x0020_Name` +
-      `&$top=500`
-    );
-    allJobs = results
-      .map(r => ({
-        id: r.Id,
-        name: r.Project_x0020_Name || "",
-        number: r.Title || "",
-        address: r.Project_x0020_Location || "",
-        pm: r.PM || "",
-        client: r.Client_x0020_Company || "",
-        status: r.Project_x0020_Status || ""
-      }))
-      .filter(j => j.name);
+    const data = await proxyGet("getMPI");
+    allJobs = data.jobs || [];
     filteredJobs = [...allJobs];
   } catch (e) {
     showError("mpi-error", "Could not load projects. Check SharePoint connection.");
@@ -376,21 +330,8 @@ async function loadItems() {
   show("items-loading");
   hide("items-error");
   try {
-    const results = await spFetch(
-      `${SITE}/_api/web/lists/getbytitle('${enc(ITEMS_LIST)}')/items` +
-      `?$select=Id,Title,Description,SageID,Manufacturer,VendorID,Packaging,ItemPicture` +
-      `&$top=500`
-    );
-    allItems = results.map(r => ({
-      id: r.Id,
-      name: r.Title || r.Description || "Unnamed item",
-      description: r.Description || "",
-      type: r.SageID || "",
-      mfr: r.Manufacturer || "",
-      vendorId: r.VendorID || "",
-      pkg: r.Packaging || "",
-      picture: parseThumbnail(r.ItemPicture)
-    }));
+    const data = await proxyGet("getItems");
+    allItems = data.items || [];
     filteredItems = [...allItems];
   } catch (e) {
     showError("items-error", "Could not load items list. Check SharePoint connection.");
@@ -404,7 +345,7 @@ function parseThumbnail(val) {
   if (!val) return null;
   try {
     const obj = typeof val === "string" ? JSON.parse(val) : val;
-    if (obj.serverRelativeUrl) return `${SITE.split("/sites/")[0]}${obj.serverRelativeUrl}`;
+    if (obj.serverRelativeUrl) return `https://scottcoatings.sharepoint.com${obj.serverRelativeUrl}`;
     return obj.thumbnailUrl || obj.url || null;
   } catch { return null; }
 }
@@ -582,18 +523,17 @@ async function submitOrder() {
     const timeVal = document.getElementById("time-requested").value;
     const notes = document.getElementById("misc-notes").value.trim();
 
-    await spPost(ORDERS_LIST, {
+    await proxyPost("submitOrder", {
       Title: `Order – ${selectedJob.name} – ${new Date().toLocaleDateString()}`,
       OrdererName: name,
       OrdererEmail: email,
-      Job_x0020_Name: selectedJob.name,
-      Project_x0020_Number: selectedJob.number,
-      Job_x0020_Site_x0020_Address: selectedJob.address,
-      Pick_x0020_Location: pickLocation,
-      Time_x0020_Requested: timeVal ? new Date(timeVal).toISOString() : null,
-      Items_x0020_Ordered: buildItemsSummary(),
-      Misc_x0020_Notes: notes || null,
-      Status: "Received"
+      JobName: selectedJob.name,
+      ProjectNumber: selectedJob.number,
+      JobAddress: selectedJob.address,
+      PickLocation: pickLocation,
+      TimeRequested: timeVal ? new Date(timeVal).toISOString() : null,
+      ItemsSummary: buildItemsSummary(),
+      Notes: notes || null
     });
 
     document.getElementById("confirm-email").textContent = email;
