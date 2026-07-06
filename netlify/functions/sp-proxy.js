@@ -113,8 +113,8 @@ async function getMPI(token, headers) {
 
   const url =
     `${SITE}/_api/web/lists/getbytitle('${encodeURIComponent(MPI_LIST)}')/items` +
-    `?$select=Id,Title,Project_x0020_Name,Project_x0020_Location,PM/Title,Client_x0020_Company,Project_x0020_Status` +
-    `&$expand=PM` +
+    `?$select=Id,Title,Project_x0020_Name,Project_x0020_Location,PM_x0020_Name,Client_x0020_Company/Title,Project_x0020_Status` +
+    `&$expand=Client_x0020_Company` +
     `&$filter=${statusFilter}` +
     `&$orderby=Project_x0020_Name` +
     `&$top=500`;
@@ -127,8 +127,8 @@ async function getMPI(token, headers) {
       name: r.Project_x0020_Name || "",
       number: r.Title || "",
       address: r.Project_x0020_Location || "",
-      pm: r.PM?.Title || "",
-      client: r.Client_x0020_Company || "",
+      pm: r.PM_x0020_Name || "",
+      client: r.Client_x0020_Company?.Title || "",
       status: r.Project_x0020_Status || ""
     }))
     .filter(j => j.name);
