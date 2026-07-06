@@ -113,7 +113,8 @@ async function getMPI(token, headers) {
 
   const url =
     `${SITE}/_api/web/lists/getbytitle('${encodeURIComponent(MPI_LIST)}')/items` +
-    `?$select=Id,Title,Project_x0020_Name,Project_x0020_Location,PM,Client_x0020_Company,Project_x0020_Status` +
+    `?$select=Id,Title,Project_x0020_Name,Project_x0020_Location,PM/Title,Client_x0020_Company,Project_x0020_Status` +
+    `&$expand=PM` +
     `&$filter=${statusFilter}` +
     `&$orderby=Project_x0020_Name` +
     `&$top=500`;
@@ -126,7 +127,7 @@ async function getMPI(token, headers) {
       name: r.Project_x0020_Name || "",
       number: r.Title || "",
       address: r.Project_x0020_Location || "",
-      pm: r.PM || "",
+      pm: r.PM?.Title || "",
       client: r.Client_x0020_Company || "",
       status: r.Project_x0020_Status || ""
     }))
@@ -142,9 +143,11 @@ async function getMPI(token, headers) {
 // ── GET ITEMS ────────────────────────────────────────────────────────────────
 
 async function getItems(token, headers) {
+  // Reference list by server-relative URL path to avoid title lookup issues
   const url =
-    `${SITE}/_api/web/lists/getbytitle('${encodeURIComponent(ITEMS_LIST)}')/items` +
-    `?$select=Id,Title,Description,SageID,Manufacturer,VendorID,Packaging,ItemPicture` +
+    `${SITE}/_api/web/GetList(@listUrl)/items` +
+    `?@listUrl='${encodeURIComponent("/sites/ProjectOperations/Lists/SUN")}'` +
+    `&$select=Id,Title,Description,SageID,Manufacturer,VendorID,Packaging,ItemPicture` +
     `&$top=500`;
 
   const results = await spGetAll(url, token);
