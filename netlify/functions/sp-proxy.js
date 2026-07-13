@@ -142,25 +142,27 @@ async function getMPI(token, headers) {
 
 // ── GET ITEMS ────────────────────────────────────────────────────────────────
 
+const SP_SITE_ID = "6b5a71b8-6a22-4cbc-80c1-83281dbce1af,72c919df-0ae4-4b80-85e5-fc3820e7b1e2";
+const SP_LIST_ID = "fab56298-a6c9-4aec-befa-7349e41a2aad";
+
 async function getItems(token, headers) {
-  // Reference list by server-relative URL path to avoid title lookup issues
   const url =
     `${SITE}/_api/web/GetList(@listUrl)/items` +
     `?@listUrl='${encodeURIComponent("/sites/ProjectOperations/Lists/SUN")}'` +
-    `&$select=Id,Title,Description,SageID,Manufacturer,VendorID,Packaging,ItemPicture` +
+    `&$select=Id,Title,Description,SageID,Manufacturer,VendorID,Packaging` +
     `&$top=500`;
 
   const results = await spGetAll(url, token);
 
   const items = results.map(r => ({
     id: r.Id,
-    name: r.Title || r.Description || "Unnamed item",
-    description: r.Description || "",
+    sageId: r.Title || "",
+    name: r.Description || r.Title || "Unnamed item",
     type: r.SageID || "",
     mfr: r.Manufacturer || "",
     vendorId: r.VendorID || "",
     pkg: r.Packaging || "",
-    picture: parseThumbnail(r.ItemPicture)
+    picture: `https://scottcoatings.sharepoint.com/_api/v2.1/sites('${SP_SITE_ID}')/lists('${SP_LIST_ID}')/items('${r.Id}')/thumbnails/0/large/content?prefer=noredirect`
   }));
 
   return {
@@ -168,16 +170,6 @@ async function getItems(token, headers) {
     headers,
     body: JSON.stringify({ items })
   };
-}
-
-function parseThumbnail(val) {
-  if (!val) return null;
-  try {
-    const obj = typeof val === "string" ? JSON.parse(val) : val;
-    const base = "https://scottcoatings.sharepoint.com";
-    if (obj.serverRelativeUrl) return `${base}${obj.serverRelativeUrl}`;
-    return obj.thumbnailUrl || obj.url || null;
-  } catch { return null; }
 }
 
 // ── SUBMIT ORDER ─────────────────────────────────────────────────────────────
