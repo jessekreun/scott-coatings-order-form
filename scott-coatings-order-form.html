@@ -434,7 +434,7 @@ function filterItems(q) {
   const lower = q.toLowerCase();
   filteredItems = q ? allItems.filter(i =>
     i.name.toLowerCase().includes(lower) ||
-    i.description.toLowerCase().includes(lower) ||
+    (i.sageId && i.sageId.toLowerCase().includes(lower)) ||
     i.type.toLowerCase().includes(lower) ||
     i.mfr.toLowerCase().includes(lower)
   ) : allItems;
@@ -449,7 +449,7 @@ function showItemDropdown() {
       ${thumbEl(item.picture, item.type, "lg")}
       <div class="item-option-info">
         <div class="item-opt-name">${item.name}</div>
-        <div class="item-opt-meta">${item.mfr}${item.pkg ? " · "+item.pkg : ""}${item.vendorId ? " · "+item.vendorId : ""}</div>
+        <div class="item-opt-meta">${item.mfr}${item.pkg ? " · "+item.pkg : ""} · ID: ${item.sageId}</div>
       </div>
       ${badgeEl(item.type)}
     </div>`).join("");
@@ -485,7 +485,7 @@ function renderCart() {
       ${thumbEl(it.picture, it.type, "sm")}
       <div class="cart-item-info">
         <div class="cart-item-name">${it.name}</div>
-        <div class="cart-item-sub">${it.type}${it.pkg ? " · "+it.pkg : ""}</div>
+        <div class="cart-item-sub">${it.type}${it.pkg ? " · "+it.pkg : ""} · ID: ${it.sageId}</div>
       </div>
       <div class="qty-control">
         <button class="qty-btn" onclick="changeQty(${id},-1)">−</button>
@@ -505,7 +505,7 @@ function setPick(loc) {
 
 function buildItemsSummary() {
   return Object.values(cart).map(it =>
-    `• ${it.name} (${it.type}) × ${it.qty} ${it.pkg}`.trim()
+    `• ${it.name} [ID: ${it.sageId}] (${it.type}) × ${it.qty} ${it.pkg}`.trim()
   ).join("\r\n");
 }
 
