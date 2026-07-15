@@ -505,7 +505,7 @@ function setPick(loc) {
 
 function buildItemsSummary() {
   return Object.values(cart).map(it =>
-    `• ${it.name} [ID: ${it.sageId}] (${it.type}) × ${it.qty} ${it.pkg}`.trim()
+    `• ${it.name} [Sage ID: ${it.sageId}] [Vendor: ${it.vendorId || '—'}] (${it.type}) × ${it.qty} ${it.pkg}`.trim()
   ).join("\r\n");
 }
 
