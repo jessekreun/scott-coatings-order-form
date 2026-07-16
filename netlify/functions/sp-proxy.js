@@ -152,7 +152,8 @@ async function submitOrder(token, headers, rawBody) {
     JobNameId: payload.JobNameId || null,
     Delivery_x0020_Location: payload.PickLocation,
     Delivery_x0020_Date: payload.TimeRequested || null,
-    Quantities_x0020_Requested: payload.ItemsSummary,
+    Quantities_x0020_Requested: payload.SunOeqSummary || null,
+    PPEItemsOrdered: payload.PPESummary || null,
     Additional_x0020_Notes_x002f_Com: payload.Notes || null,
     Status: "Received"
   };
