@@ -504,9 +504,16 @@ function setPick(loc) {
 }
 
 function buildItemsSummary() {
-  return Object.values(cart).map(it =>
-    `• ${it.name} [Sage ID: ${it.sageId}] [Vendor: ${it.vendorId || '—'}] (${it.type}) × ${it.qty} ${it.pkg}`.trim()
-  ).join("\r\n");
+  const sunOeq = Object.values(cart).filter(it => it.type !== "PPE");
+  const ppe = Object.values(cart).filter(it => it.type === "PPE");
+
+  const formatItem = it =>
+    `• ${it.name} [Sage ID: ${it.sageId}] [Vendor: ${it.vendorId || '—'}] (${it.type}) × ${it.qty} ${it.pkg}`.trim();
+
+  return {
+    sunOeq: sunOeq.length ? sunOeq.map(formatItem).join("\r\n") : null,
+    ppe: ppe.length ? ppe.map(formatItem).join("\r\n") : null
+  };
 }
 
 // ── SUBMIT ──
@@ -524,6 +531,7 @@ async function submitOrder() {
   try {
     const timeVal = document.getElementById("time-requested").value;
     const notes = document.getElementById("misc-notes").value.trim();
+    const summary = buildItemsSummary();
 
     await proxyPost("submitOrder", {
       Title: `Order – ${selectedJob.name} – ${new Date().toLocaleDateString()}`,
@@ -532,7 +540,8 @@ async function submitOrder() {
       JobNameId: selectedJob.id,
       PickLocation: pickLocation,
       TimeRequested: timeVal ? new Date(timeVal).toISOString() : null,
-      ItemsSummary: buildItemsSummary(),
+      SunOeqSummary: summary.sunOeq,
+      PPESummary: summary.ppe,
       Notes: notes || null
     });
 
