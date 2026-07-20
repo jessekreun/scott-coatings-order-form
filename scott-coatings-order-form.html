@@ -504,15 +504,41 @@ function setPick(loc) {
 }
 
 function buildItemsSummary() {
-  const sunOeq = Object.values(cart).filter(it => it.type !== "PPE");
-  const ppe = Object.values(cart).filter(it => it.type === "PPE");
+  const allItems = Object.values(cart);
+
+  // Group by vendor ID
+  const byVendor = {};
+  allItems.forEach(it => {
+    const vendor = it.vendorId || "Unknown Vendor";
+    if (!byVendor[vendor]) byVendor[vendor] = [];
+    byVendor[vendor].push(it);
+  });
 
   const formatItem = it =>
-    `• ${it.name} [Sage ID: ${it.sageId}] [Vendor: ${it.vendorId || '—'}] (${it.type}) × ${it.qty} ${it.pkg}`.trim();
+    `  • ${it.sageId} — ${it.name} (${it.type}) × ${it.qty} ${it.pkg}`.trim();
+
+  const sunOeqLines = [];
+  const ppeLines = [];
+
+  Object.entries(byVendor).forEach(([vendor, items]) => {
+    const sunOeq = items.filter(it => it.type !== "PPE");
+    const ppe = items.filter(it => it.type === "PPE");
+
+    if (sunOeq.length) {
+      sunOeqLines.push(`VENDOR: ${vendor}`);
+      sunOeq.forEach(it => sunOeqLines.push(formatItem(it)));
+      sunOeqLines.push("");
+    }
+    if (ppe.length) {
+      ppeLines.push(`VENDOR: ${vendor}`);
+      ppe.forEach(it => ppeLines.push(formatItem(it)));
+      ppeLines.push("");
+    }
+  });
 
   return {
-    sunOeq: sunOeq.length ? sunOeq.map(formatItem).join("\r\n") : null,
-    ppe: ppe.length ? ppe.map(formatItem).join("\r\n") : null
+    sunOeq: sunOeqLines.length ? sunOeqLines.join("\r\n").trimEnd() : null,
+    ppe: ppeLines.length ? ppeLines.join("\r\n").trimEnd() : null
   };
 }
 
