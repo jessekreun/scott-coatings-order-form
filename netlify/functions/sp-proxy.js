@@ -217,7 +217,7 @@ async function submitPaintOrder(token, headers, rawBody) {
 
   await spPostItem(PAINT_ORDERS_LIST, {
     Title: p.Title,
-    OrdererName: p.OrdererName,
+    Orderername: p.OrdererName,
     OrdererEmail: p.OrdererEmail,
     ProjectNameId: p.JobNameId || null,
     PickuporDelivery: p.PickupOrDelivery,
