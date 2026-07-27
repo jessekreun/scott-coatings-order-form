@@ -168,7 +168,7 @@ async function getMAT(token, headers) {
   const results = await spGetAll(
     `${SITE}/_api/web/GetList(@listUrl)/items` +
     `?@listUrl='${encodeURIComponent("/sites/ProjectOperations/Lists/2MAT")}'` +
-    `&$select=Id,Title,Description,Manufacturer,VendorID,SageID,Paint_x002f_Coatings_x0020_Type,Packaging,Cost_x0020__x002f__x0020_Gal` +
+    `&$select=Id,Title,Description,Manufacturer,VendorID,SageID,Packaging` +
     `&$top=500`,
     token
   );
@@ -179,9 +179,9 @@ async function getMAT(token, headers) {
     name: r.Description || r.Title || "Unnamed product",
     mfr: r.Manufacturer || "",
     vendorId: r.VendorID || "",
-    type: r.Paint_x002f_Coatings_x0020_Type || "",
+    type: "",
     pkg: r.Packaging || "",
-    costPerGal: r.Cost_x0020__x002f__x0020_Gal || null
+    costPerGal: null
   }));
 
   return { statusCode: 200, headers, body: JSON.stringify({ items }) };
