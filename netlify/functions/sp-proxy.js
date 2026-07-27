@@ -175,11 +175,11 @@ async function getMAT(token, headers) {
 
   const items = results.map(r => ({
     id: r.Id,
-    sageId: r.SageID || r.Title || "",
+    sageId: r.Title || "",
     name: r.Description || r.Title || "Unnamed product",
     mfr: r.Manufacturer || "",
     vendorId: r.VendorID || "",
-    type: "",
+    type: r.SageID || "",
     pkg: r.Packaging || "",
     costPerGal: null
   }));
