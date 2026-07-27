@@ -795,8 +795,10 @@ function removePaintItem(uid) {
 }
 
 function updatePaintField(uid, field, value) {
-  const item = paintCart.find(i => i.uid === uid);
+  const item = paintCart.find(i => i.uid == uid);
   if (item) item[field] = value;
+  // Don't re-render — just update memory. Re-render only on add/remove.
+  if (typeof updateSubmitBarSummary === "function") updateSubmitBarSummary();
 }
 
 function renderPaintCart() {
@@ -954,9 +956,13 @@ async function submitAllOrders() {
     }
 
     document.getElementById("confirm-email").textContent = email;
-    document.getElementById("success-view").style.display = "flex";
     document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
-    document.querySelector(".tab-bar").style.display = "none";
+    const tabBar = document.querySelector(".tab-bar");
+    if (tabBar) tabBar.style.display = "none";
+    const submitBar = document.getElementById("submit-bar");
+    if (submitBar) submitBar.style.display = "none";
+    const successView = document.getElementById("success-view");
+    if (successView) successView.style.display = "flex";
   } catch (e) {
     alert("Submission failed: " + e.message);
     btn.disabled = false;
