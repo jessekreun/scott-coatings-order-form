@@ -323,8 +323,6 @@ textarea { resize: none; line-height: 1.5; }
         <textarea id="sundry-notes" rows="3" placeholder="Anything the warehouse should know…"></textarea>
       </div>
     </div>
-
-    <button class="submit-btn" id="sun-submit-btn" onclick="submitSundryOrder()">Submit order request</button>
   </div>
 </div>
 
@@ -355,8 +353,6 @@ textarea { resize: none; line-height: 1.5; }
         <textarea id="paint-notes" rows="3" placeholder="Anything the warehouse should know…"></textarea>
       </div>
     </div>
-
-    <button class="submit-btn" id="paint-submit-btn" onclick="submitPaintOrder()">Submit paint order</button>
   </div>
 </div>
 
@@ -395,7 +391,7 @@ let allJobs = [], filteredJobs = [];
 let allItems = [], filteredItems = [];
 let allMAT = [], filteredMAT = [];
 let selectedJob = null;
-let cart = {};
+let cart = []; // array so tip items can appear multiple times with different specs
 let paintCart = [];
 let pickupLocation = "SC Shop";
 let isUrgent = false;
@@ -684,8 +680,9 @@ function addItem(id) {
     document.getElementById("item-dropdown").style.display = "none";
     return;
   }
-  if (cart[id]) { cart[id].qty++; }
-  else { cart[id] = { ...item, qty: 1, tipNotes: null }; }
+  const existing = cart.find(c => c.id === id && !c.tipNotes);
+  if (existing) { existing.qty++; }
+  else { cart.push({ ...item, uid: Date.now() + Math.random(), qty: 1, tipNotes: null }); }
   document.getElementById("item-search").value = "";
   filteredItems = [...allItems];
   document.getElementById("item-dropdown").style.display = "none";
@@ -695,9 +692,8 @@ function addItem(id) {
 function confirmTipModal() {
   const notes = document.getElementById("tip-notes").value.trim();
   if (!notes) { alert("Please enter the tip specifications before adding this item."); return; }
-  const id = pendingTipItem.id;
-  if (cart[id]) { cart[id].qty++; }
-  else { cart[id] = { ...pendingTipItem, qty: 1, tipNotes: notes }; }
+  // Always create a new entry for tip items so different specs can coexist
+  cart.push({ ...pendingTipItem, uid: Date.now() + Math.random(), qty: 1, tipNotes: notes });
   pendingTipItem = null;
   document.getElementById("tip-modal").classList.remove("show");
   renderCart();
@@ -708,35 +704,36 @@ function cancelTipModal() {
   document.getElementById("tip-modal").classList.remove("show");
 }
 
-function changeQty(id, delta) {
-  if (!cart[id]) return;
-  cart[id].qty += delta;
-  if (cart[id].qty <= 0) delete cart[id];
+function changeQty(uid, delta) {
+  const idx = cart.findIndex(c => c.uid == uid);
+  if (idx === -1) return;
+  cart[idx].qty += delta;
+  if (cart[idx].qty <= 0) cart.splice(idx, 1);
   renderCart();
 }
 
-function removeItem(id) { delete cart[id]; renderCart(); }
+function removeItem(uid) {
+  cart = cart.filter(c => c.uid != uid);
+  renderCart();
+}
 
 function renderCart() {
   const el = document.getElementById("cart-items");
-  const keys = Object.keys(cart);
-  if (!keys.length) { el.innerHTML = '<div class="cart-empty">No items added yet.</div>'; return; }
-  el.innerHTML = keys.map(id => {
-    const it = cart[id];
-    return `<div class="cart-item">
+  if (!cart.length) { el.innerHTML = '<div class="cart-empty">No items added yet.</div>'; return; }
+  el.innerHTML = cart.map(it => `
+    <div class="cart-item">
       ${thumbEl(it.picture, it.type, "sm")}
       <div class="cart-item-info">
         <div class="cart-item-name">${it.name}</div>
-        <div class="cart-item-sub">${it.type}${it.pkg ? " · "+it.pkg : ""} · ID: ${it.sageId}${it.tipNotes ? " · "+it.tipNotes : ""}</div>
+        <div class="cart-item-sub">${it.type}${it.pkg ? " · "+it.pkg : ""} · ID: ${it.sageId}${it.tipNotes ? "<br><span style='color:#b91c1c'>Tip: "+it.tipNotes+"</span>" : ""}</div>
       </div>
       <div class="qty-control">
-        <button class="qty-btn" onclick="changeQty(${id},-1)">−</button>
+        <button class="qty-btn" onclick="changeQty('${it.uid}',-1)">−</button>
         <span class="qty-val">${it.qty}</span>
-        <button class="qty-btn" onclick="changeQty(${id},1)">+</button>
+        <button class="qty-btn" onclick="changeQty('${it.uid}',1)">+</button>
       </div>
-      <button class="remove-btn" onclick="removeItem(${id})">✕</button>
-    </div>`;
-  }).join("");
+      <button class="remove-btn" onclick="removeItem('${it.uid}')">✕</button>
+    </div>`).join("");
 }
 
 // ── MAT SEARCH (PAINT) ──
@@ -842,9 +839,8 @@ function renderPaintCart() {
 
 // ── BUILD SUMMARIES ──
 function buildSundrySummary() {
-  const allCartItems = Object.values(cart);
-  const nonPPE = allCartItems.filter(it => !it.type.includes("PPE"));
-  const ppe = allCartItems.filter(it => it.type.includes("PPE"));
+  const nonPPE = cart.filter(it => !it.type.includes("PPE"));
+  const ppe = cart.filter(it => it.type.includes("PPE"));
 
   const byCategory = (items) => {
     const groups = {};
@@ -858,7 +854,7 @@ function buildSundrySummary() {
 
   const formatItem = it => {
     let line = `  • ${it.sageId} — ${it.name} (${it.type}) × ${it.qty} ${it.pkg}`;
-    if (it.tipNotes) line += `\n    Tip specs: ${it.tipNotes}`;
+    if (it.tipNotes) line += `\r\n    Tip specs: ${it.tipNotes}`;
     return line;
   };
 
@@ -885,81 +881,88 @@ function buildPaintSummary() {
   ).join("\r\n\r\n");
 }
 
-// ── SUBMIT SUNDRY ──
-async function submitSundryOrder() {
+// ── UNIFIED SUBMIT ──
+async function submitAllOrders() {
   const name = document.getElementById("orderer-name").value.trim();
   const email = document.getElementById("orderer-email").value.trim();
   if (!name || !email) { alert("Please enter your name and email on the Job Info tab."); return; }
   if (!selectedJob) { alert("Please select a job on the Job Info tab."); return; }
-  if (!Object.keys(cart).length) { alert("Please add at least one item."); return; }
 
-  const btn = document.getElementById("sun-submit-btn");
-  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Submitting…';
+  const hasSundries = cart.length > 0;
+  const hasPaint = paintCart.length > 0;
 
-  try {
-    const summary = buildSundrySummary();
-    const timeVal = document.getElementById("delivery-date").value;
-    await proxyPost("submitOrder", {
-      Title: `Order – ${selectedJob.name} – ${new Date().toLocaleDateString()}`,
-      OrdererName: name,
-      OrdererEmail: email,
-      JobNameId: selectedJob.id,
-      PickLocation: pickupLocation,
-      TimeRequested: timeVal ? new Date(timeVal).toISOString() : null,
-      SunOeqSummary: summary.sunOeq,
-      PPESummary: summary.ppe,
-      Notes: document.getElementById("sundry-notes").value.trim() || null
-    });
-    document.getElementById("confirm-email").textContent = email;
-    document.getElementById("success-view").style.display = "flex";
-    document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
-    document.querySelector(".tab-bar").style.display = "none";
-  } catch (e) {
-    alert("Submission failed: " + e.message);
-  } finally {
-    btn.disabled = false; btn.innerHTML = "Submit order request";
+  if (!hasSundries && !hasPaint) {
+    alert("Please add at least one item on the Sundries or Paint tab before submitting.");
+    return;
   }
-}
 
-// ── SUBMIT PAINT ──
-async function submitPaintOrder() {
-  const name = document.getElementById("orderer-name").value.trim();
-  const email = document.getElementById("orderer-email").value.trim();
-  if (!name || !email) { alert("Please enter your name and email on the Job Info tab."); return; }
-  if (!selectedJob) { alert("Please select a job on the Job Info tab."); return; }
-  if (!paintCart.length) { alert("Please add at least one product."); return; }
+  const btn = document.getElementById("main-submit-btn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Submitting…';
 
-  const btn = document.getElementById("paint-submit-btn");
-  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Submitting…';
+  const timeVal = document.getElementById("delivery-date").value;
+  const errors = [];
 
   try {
-    const timeVal = document.getElementById("delivery-date").value;
-    await proxyPost("submitPaintOrder", {
-      Title: `Paint Order – ${selectedJob.name} – ${new Date().toLocaleDateString()}`,
-      OrdererName: name,
-      OrdererEmail: email,
-      JobNameId: selectedJob.id,
-      PickupOrDelivery: pickupLocation,
-      DeliveryDate: timeVal ? new Date(timeVal).toISOString() : null,
-      DeliveryNotes: document.getElementById("delivery-notes").value.trim() || null,
-      ItemsSummary: buildPaintSummary(),
-      ItemCount: paintCart.length,
-      Urgent: isUrgent
-    });
+    const submits = [];
+
+    if (hasSundries) {
+      const summary = buildSundrySummary();
+      submits.push(
+        proxyPost("submitOrder", {
+          Title: `Order – ${selectedJob.name} – ${new Date().toLocaleDateString()}`,
+          OrdererName: name,
+          OrdererEmail: email,
+          JobNameId: selectedJob.id,
+          PickLocation: pickupLocation,
+          TimeRequested: timeVal ? new Date(timeVal).toISOString() : null,
+          SunOeqSummary: summary.sunOeq,
+          PPESummary: summary.ppe,
+          Notes: document.getElementById("sundry-notes").value.trim() || null
+        }).catch(e => errors.push(`Sundry order: ${e.message}`))
+      );
+    }
+
+    if (hasPaint) {
+      submits.push(
+        proxyPost("submitPaintOrder", {
+          Title: `Paint Order – ${selectedJob.name} – ${new Date().toLocaleDateString()}`,
+          OrdererName: name,
+          OrdererEmail: email,
+          JobNameId: selectedJob.id,
+          PickupOrDelivery: pickupLocation,
+          DeliveryDate: timeVal ? new Date(timeVal).toISOString() : null,
+          DeliveryNotes: document.getElementById("delivery-notes").value.trim() || null,
+          ItemsSummary: buildPaintSummary(),
+          ItemCount: paintCart.length,
+          Urgent: isUrgent
+        }).catch(e => errors.push(`Paint order: ${e.message}`))
+      );
+    }
+
+    await Promise.all(submits);
+
+    if (errors.length) {
+      alert("Some orders failed to submit:\n\n" + errors.join("\n") + "\n\nPlease contact the office.");
+      btn.disabled = false;
+      btn.innerHTML = "Submit order";
+      return;
+    }
+
     document.getElementById("confirm-email").textContent = email;
     document.getElementById("success-view").style.display = "flex";
     document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
     document.querySelector(".tab-bar").style.display = "none";
   } catch (e) {
     alert("Submission failed: " + e.message);
-  } finally {
-    btn.disabled = false; btn.innerHTML = "Submit paint order";
+    btn.disabled = false;
+    btn.innerHTML = "Submit order";
   }
 }
 
 // ── RESET ──
 function resetAll() {
-  cart = {}; paintCart = []; selectedJob = null; pickupLocation = "SC Shop"; isUrgent = false;
+  cart = []; paintCart = []; selectedJob = null; pickupLocation = "SC Shop"; isUrgent = false;
   filteredJobs = [...allJobs]; filteredItems = [...allItems]; filteredMAT = [...allMAT];
   ["orderer-name","orderer-email","job-search","sundry-notes","paint-notes","delivery-notes","delivery-window"].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = "";
@@ -1022,6 +1025,39 @@ document.addEventListener("click", function(e) {
     show("signin-banner");
   }
 })();
+</script>
+<!-- ══ GLOBAL SUBMIT BAR ══ -->
+<div id="submit-bar" style="position:sticky;bottom:0;background:#fff;border-top:1px solid #e2e5ea;padding:0.75rem 1.25rem;z-index:90;display:none;">
+  <div style="max-width:680px;margin:0 auto;display:flex;align-items:center;gap:12px;">
+    <div style="flex:1;font-size:12px;color:#888;" id="submit-bar-summary">Add items to submit</div>
+    <button class="submit-btn" id="main-submit-btn" style="width:auto;padding:10px 24px;" onclick="submitAllOrders()">Submit order</button>
+  </div>
+</div>
+
+<script>
+// Show submit bar once job info is confirmed
+const _origGoToOrders = goToOrders;
+function goToOrders() {
+  _origGoToOrders();
+  document.getElementById("submit-bar").style.display = "block";
+  updateSubmitBarSummary();
+}
+
+function updateSubmitBarSummary() {
+  const sunCount = cart.length;
+  const paintCount = paintCart.length;
+  const parts = [];
+  if (sunCount) parts.push(`${sunCount} sundry item${sunCount !== 1 ? "s" : ""}`);
+  if (paintCount) parts.push(`${paintCount} paint product${paintCount !== 1 ? "s" : ""}`);
+  document.getElementById("submit-bar-summary").textContent =
+    parts.length ? parts.join(" + ") : "Add items to submit";
+}
+
+// Patch renderCart and renderPaintCart to update summary
+const _origRenderCart = renderCart;
+function renderCart() { _origRenderCart(); updateSubmitBarSummary(); }
+const _origRenderPaintCart = renderPaintCart;
+function renderPaintCart() { _origRenderPaintCart(); updateSubmitBarSummary(); }
 </script>
 </body>
 </html>
