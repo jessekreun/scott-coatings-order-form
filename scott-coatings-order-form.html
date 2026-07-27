@@ -512,7 +512,9 @@ function goToOrders() {
   if (!selectedJob) { alert("Please select a job first."); return; }
   document.getElementById("tab-sundries").disabled = false;
   document.getElementById("tab-paint").disabled = false;
+  document.getElementById("submit-bar").style.display = "block";
   syncJobLabels();
+  updateSubmitBarSummary();
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
   document.getElementById("tab-sundries").classList.add("active");
@@ -734,6 +736,7 @@ function renderCart() {
       </div>
       <button class="remove-btn" onclick="removeItem('${it.uid}')">✕</button>
     </div>`).join("");
+  if (typeof updateSubmitBarSummary === "function") updateSubmitBarSummary();
 }
 
 // ── MAT SEARCH (PAINT) ──
@@ -835,6 +838,7 @@ function renderPaintCart() {
         </div>
       </div>
     </div>`).join("");
+  if (typeof updateSubmitBarSummary === "function") updateSubmitBarSummary();
 }
 
 // ── BUILD SUMMARIES ──
@@ -1035,29 +1039,15 @@ document.addEventListener("click", function(e) {
 </div>
 
 <script>
-// Show submit bar once job info is confirmed
-const _origGoToOrders = goToOrders;
-function goToOrders() {
-  _origGoToOrders();
-  document.getElementById("submit-bar").style.display = "block";
-  updateSubmitBarSummary();
-}
-
 function updateSubmitBarSummary() {
   const sunCount = cart.length;
   const paintCount = paintCart.length;
   const parts = [];
   if (sunCount) parts.push(`${sunCount} sundry item${sunCount !== 1 ? "s" : ""}`);
   if (paintCount) parts.push(`${paintCount} paint product${paintCount !== 1 ? "s" : ""}`);
-  document.getElementById("submit-bar-summary").textContent =
-    parts.length ? parts.join(" + ") : "Add items to submit";
+  const el = document.getElementById("submit-bar-summary");
+  if (el) el.textContent = parts.length ? parts.join(" + ") : "Add items to submit";
 }
-
-// Patch renderCart and renderPaintCart to update summary
-const _origRenderCart = renderCart;
-function renderCart() { _origRenderCart(); updateSubmitBarSummary(); }
-const _origRenderPaintCart = renderPaintCart;
-function renderPaintCart() { _origRenderPaintCart(); updateSubmitBarSummary(); }
 </script>
 </body>
 </html>
