@@ -143,7 +143,7 @@ async function getItems(token, headers) {
   const results = await spGetAll(
     `${SITE}/_api/web/GetList(@listUrl)/items` +
     `?@listUrl='${encodeURIComponent("/sites/ProjectOperations/Lists/SUN")}'` +
-    `&$select=Id,Title,Description,SageID,Manufacturer,VendorID,Packaging,ImageURL,DisplayName` +
+    `&$select=Id,Title,Description,SageID,Manufacturer,VendorID,Packaging,ImageURL` +
     `&$filter=Active eq 1 and Preferred eq 1` +
     `&$top=500`,
     token
@@ -152,7 +152,7 @@ async function getItems(token, headers) {
   const items = results.map(r => ({
     id: r.Id,
     sageId: r.Title || "",
-    name: r.DisplayName || r.Description || r.Title || "Unnamed item",
+    name: r.Description || r.Title || "Unnamed item",
     type: r.SageID || "",
     mfr: r.Manufacturer || "",
     vendorId: r.VendorID || "",
