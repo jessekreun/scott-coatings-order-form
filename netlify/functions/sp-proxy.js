@@ -190,7 +190,6 @@ async function getSubmittals(token, headers, params) {
     `?$select=Id,Title,ProjectNameId,Product/Title,Product/Description,ColorName,Color_x0023_,ColorDesignation,Surface,LocationofWork,ReadyforOrderForm` +
     `&$expand=Product` +
     `&$filter=ProjectNameId eq ${jobId} and ReadyforOrderForm eq 1` +
-    `&$orderby=Surface,ColorDesignation` +
     `&$top=500`;
 
   const results = await spGetAll(url, token);
