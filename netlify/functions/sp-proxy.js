@@ -27,7 +27,7 @@ exports.handler = async function(event) {
     switch (action) {
       case "getMPI":          return await getMPI(token, headers);
       case "getItems":        return await getItems(token, headers);
-      case "getMAT":          return await getMAT(token, headers);
+      case "getSubmittals":    return await getSubmittals(token, headers, event.queryStringParameters);
       case "submitOrder":     return await submitOrder(token, headers, event.body);
       case "submitPaintOrder": return await submitPaintOrder(token, headers, event.body);
       default:
@@ -163,26 +163,47 @@ async function getItems(token, headers) {
   return { statusCode: 200, headers, body: JSON.stringify({ items }) };
 }
 
-// ── GET MAT (paint/materials list) ───────────────────────────────────────────
+// ── GET SUBMITTALS (paint tab — filtered by job and ReadyForOrderForm) ────────
 
-async function getMAT(token, headers) {
-  const results = await spGetAll(
-    `${SITE}/_api/web/GetList(@listUrl)/items` +
-    `?@listUrl='${encodeURIComponent("/sites/ProjectOperations/Lists/2MAT")}'` +
-    `&$select=Id,Title,Description,Manufacturer,VendorID,SageID,Packaging` +
-    `&$top=500`,
-    token
-  );
+function cleanProductName(name) {
+  if (!name) return "";
+  return name
+    .replace(/ ?-? ?\d+ Gal(lon)? Kit/gi, "")
+    .replace(/ ?-? ?\d+ Gal(lon)?s?/gi, "")
+    .replace(/ ?-? ?\d+ GAL KIT/gi, "")
+    .replace(/ ?-? ?\d+ GAL/gi, "")
+    .replace(/ ?- ?[15]$/g, "")
+    .trim();
+}
+
+function cleanSageId(id) {
+  if (!id) return "";
+  return id.replace(/-[15](\s.*)?$/i, "").trim();
+}
+
+async function getSubmittals(token, headers, params) {
+  const jobId = params?.jobId;
+  if (!jobId) return { statusCode: 400, headers, body: JSON.stringify({ error: "jobId required" }) };
+
+  const url =
+    `${SITE}/_api/web/lists/getbytitle('Submittals')/items` +
+    `?$select=Id,Title,ProjectNameId,Product/Title,Product/Description,ColorName,Color_x0023_,ColorDesignation,Surface,LocationofWork,ReadyforOrderForm` +
+    `&$expand=Product` +
+    `&$filter=ProjectNameId eq ${jobId} and ReadyforOrderForm eq 1` +
+    `&$orderby=Surface,ColorDesignation` +
+    `&$top=500`;
+
+  const results = await spGetAll(url, token);
 
   const items = results.map(r => ({
     id: r.Id,
-    sageId: r.Title || "",
-    name: r.Description || r.Title || "Unnamed product",
-    mfr: r.Manufacturer || "",
-    vendorId: r.VendorID || "",
-    type: r.SageID || "",
-    pkg: r.Packaging || "",
-    costPerGal: null
+    productName: cleanProductName(r.Product?.Description || r.Product?.Title || ""),
+    sageId: cleanSageId(r.Product?.Title || ""),
+    colorName: r.ColorName || "",
+    colorNum: r.Color_x0023_ || "",
+    colorDesig: r.ColorDesignation || "",
+    surface: r.Surface || "",
+    location: r.LocationofWork || ""
   }));
 
   return { statusCode: 200, headers, body: JSON.stringify({ items }) };
@@ -216,6 +237,15 @@ async function submitPaintOrder(token, headers, rawBody) {
   if (!rawBody) throw new Error("No body provided");
   const p = JSON.parse(rawBody);
 
+  // Build items summary — only include lines where gallons > 0
+  const lineItems = (p.lineItems || []).filter(l => l.gallons > 0);
+  const itemsSummary = lineItems.map(l =>
+    `${l.productName} [Sage ID: ${l.sageId}]\n` +
+    `  Surface: ${l.surface || "—"} | Color: ${l.colorDesig || "—"} ${l.colorName || ""}` +
+    `${l.colorNum ? " | Match #: " + l.colorNum : ""}\n` +
+    `  Gallons needed: ${l.gallons}`
+  ).join("\n\n");
+
   await spPostItem(PAINT_ORDERS_LIST, {
     Title: p.Title,
     Orderername: p.OrdererName,
@@ -224,8 +254,8 @@ async function submitPaintOrder(token, headers, rawBody) {
     PickuporDelivery: p.PickupOrDelivery,
     DeliveryDate: p.DeliveryDate || null,
     DeliveryNotes: p.DeliveryNotes || null,
-    ItemsOrdered: p.ItemsSummary || null,
-    ItemCount: p.ItemCount || 0,
+    ItemsOrdered: itemsSummary || null,
+    ItemCount: lineItems.length,
     Urgent: p.Urgent || false,
     Status: "Received"
   }, token);
