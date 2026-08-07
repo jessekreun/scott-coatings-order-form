@@ -334,16 +334,11 @@ textarea { resize: none; line-height: 1.5; }
     </div>
 
     <div class="sc-section">
-      <div class="sc-section-label">Paint / material items</div>
+      <div class="sc-section-label">Approved paint items</div>
       <div id="mat-error" class="error-state"></div>
-      <div class="loading-pill" id="mat-loading">Loading products…</div>
-      <div class="search-wrap" style="margin-bottom:0.75rem;">
-        <span class="search-icon">🔍</span>
-        <input type="text" id="mat-search" placeholder="Search product, sheen, type…" oninput="filterMAT(this.value)" onfocus="showMATDropdown()" autocomplete="off" />
-      </div>
-      <div class="dropdown" id="mat-dropdown"></div>
-      <div class="paint-items" id="paint-items">
-        <div class="cart-empty" id="paint-empty">No products added yet.</div>
+      <div class="loading-pill" id="mat-loading">Loading approved items for this job…</div>
+      <div id="paint-items">
+        <div class="cart-empty" id="paint-empty">Select a job on the Job Info tab to see approved paint items.</div>
       </div>
     </div>
 
@@ -392,7 +387,8 @@ let allItems = [], filteredItems = [];
 let allMAT = [], filteredMAT = [];
 let selectedJob = null;
 let cart = []; // array so tip items can appear multiple times with different specs
-let paintCart = [];
+let paintCart = []; // kept for reset compatibility
+let submittals = []; // pre-populated per job from Submittals list
 let pickupLocation = "SC Shop";
 let isUrgent = false;
 let pendingTipItem = null;
@@ -433,7 +429,7 @@ async function signIn() {
       scopes: ["https://scottcoatings.sharepoint.com/.default"]
     });
     accessToken = result.accessToken;
-    await Promise.all([loadMPI(), loadItems(), loadMAT()]);
+    await Promise.all([loadMPI(), loadItems()]);
   } catch (e) {
     console.error("Sign in failed:", e);
     show("signin-banner");
@@ -485,15 +481,41 @@ async function loadItems() {
   } finally { hide("items-loading"); }
 }
 
-async function loadMAT() {
+async function loadSubmittals(jobId) {
   show("mat-loading"); hide("mat-error");
   try {
-    const data = await proxyGet("getMAT");
-    allMAT = data.items || [];
-    filteredMAT = [...allMAT];
+    const data = await proxyGet(`getSubmittals&jobId=${jobId}`);
+    submittals = data.items || [];
+    renderSubmittals();
   } catch (e) {
-    showError("mat-error", "Could not load product list.");
+    showError("mat-error", "Could not load approved items for this job.");
+    console.error("Submittals load:", e);
   } finally { hide("mat-loading"); }
+}
+
+function renderSubmittals() {
+  const el = document.getElementById("paint-items");
+  if (!submittals.length) {
+    el.innerHTML = '<div class="cart-empty">No approved paint items found for this job. Contact the office if items are missing.</div>';
+    return;
+  }
+  el.innerHTML = submittals.map((s, i) => `
+    <div class="paint-item" style="margin-bottom:10px;">
+      <div class="paint-item-header">
+        <div class="paint-item-name">${s.productName}<br>
+          <span style="font-size:11px;color:#888;font-weight:400;">
+            ${s.surface ? s.surface + " · " : ""}${s.colorDesig ? s.colorDesig + " · " : ""}${s.colorName || ""}${s.colorNum ? " · Match #" + s.colorNum : ""}
+          </span>
+        </div>
+      </div>
+      <div class="paint-item-fields">
+        <div class="paint-field" style="max-width:160px;">
+          <label>Gallons needed</label>
+          <input type="number" min="0" step="1" placeholder="0" id="gallons-${i}" oninput="updateSubmitBarSummary()" />
+        </div>
+      </div>
+    </div>`).join("");
+  if (typeof updateSubmitBarSummary === "function") updateSubmitBarSummary();
 }
 
 // ── TABS ──
@@ -515,6 +537,8 @@ function goToOrders() {
   document.getElementById("submit-bar").style.display = "block";
   syncJobLabels();
   updateSubmitBarSummary();
+  // Load submittals for this job
+  loadSubmittals(selectedJob.id);
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
   document.getElementById("tab-sundries").classList.add("active");
@@ -738,110 +762,6 @@ function renderCart() {
   if (typeof updateSubmitBarSummary === "function") updateSubmitBarSummary();
 }
 
-// ── MAT SEARCH (PAINT) ──
-function filterMAT(q) {
-  const lower = q.toLowerCase();
-  filteredMAT = q ? allMAT.filter(i =>
-    i.name.toLowerCase().includes(lower) ||
-    (i.sageId && i.sageId.toLowerCase().includes(lower)) ||
-    i.mfr.toLowerCase().includes(lower) ||
-    i.type.toLowerCase().includes(lower)
-  ) : allMAT;
-  showMATDropdown();
-}
-
-function showMATDropdown() {
-  const dd = document.getElementById("mat-dropdown");
-  if (!filteredMAT.length) { dd.style.display = "none"; return; }
-  dd.innerHTML = filteredMAT.slice(0,50).map(item => `
-    <div class="item-option" onclick="addPaintItem(${item.id})">
-      <div class="item-thumb-placeholder" style="background:#f0f6ff;color:#0369a1;font-size:9px;">MAT</div>
-      <div class="item-option-info">
-        <div class="item-opt-name">${item.name}</div>
-        <div class="item-opt-meta">${item.mfr}${item.pkg ? " · "+item.pkg : ""} · ${item.type} · ID: ${item.sageId}</div>
-      </div>
-    </div>`).join("");
-  dd.style.display = "block";
-}
-
-function addPaintItem(id) {
-  const item = allMAT.find(i => i.id === id);
-  if (!item) return;
-  paintCart.push({
-    uid: Date.now() + Math.random(),
-    id: item.id,
-    sageId: item.sageId,
-    name: item.name,
-    mfr: item.mfr,
-    vendorId: item.vendorId,
-    type: item.type,
-    pkg: item.pkg,
-    gallons: "1",
-    colorNum: "",
-    matchNum: "",
-    colorName: "",
-    substrate: ""
-  });
-  document.getElementById("mat-search").value = "";
-  filteredMAT = [...allMAT];
-  document.getElementById("mat-dropdown").style.display = "none";
-  renderPaintCart();
-}
-
-function removePaintItem(uid) {
-  paintCart = paintCart.filter(i => i.uid !== uid);
-  renderPaintCart();
-}
-
-function updatePaintField(uid, field, value) {
-  const item = paintCart.find(i => i.uid == uid);
-  if (item) item[field] = value;
-  // Don't re-render — just update memory. Re-render only on add/remove.
-  if (typeof updateSubmitBarSummary === "function") updateSubmitBarSummary();
-}
-
-function renderPaintCart() {
-  const el = document.getElementById("paint-items");
-  const emptyEl = document.getElementById("paint-empty");
-  if (!paintCart.length) {
-    el.innerHTML = '<div class="cart-empty" id="paint-empty">No products added yet.</div>';
-    return;
-  }
-  el.innerHTML = paintCart.map(it => `
-    <div class="paint-item">
-      <div class="paint-item-header">
-        <div class="paint-item-name">${it.name}<br><span style="font-size:11px;color:#888;font-weight:400;">${it.mfr} · ${it.type} · ID: ${it.sageId}</span></div>
-        <button class="remove-btn" onclick="removePaintItem('${it.uid}')">✕</button>
-      </div>
-      <div class="paint-item-fields">
-        <div class="paint-field">
-          <label>Gallons</label>
-          <select onchange="updatePaintField('${it.uid}','gallons',this.value)">
-            <option value="1" ${it.gallons==="1"?"selected":""}>1 gallon</option>
-            <option value="5" ${it.gallons==="5"?"selected":""}>5 gallons</option>
-          </select>
-        </div>
-        <div class="paint-field">
-          <label>Substrate</label>
-          <input type="text" value="${it.substrate}" placeholder="e.g. GWB Walls" oninput="updatePaintField('${it.uid}','substrate',this.value)" />
-        </div>
-        <div class="paint-field">
-          <label>Color #</label>
-          <input type="text" value="${it.colorNum}" placeholder="e.g. P-1" oninput="updatePaintField('${it.uid}','colorNum',this.value)" />
-        </div>
-        <div class="paint-field">
-          <label>Match #</label>
-          <input type="text" value="${it.matchNum}" placeholder="e.g. 14291" oninput="updatePaintField('${it.uid}','matchNum',this.value)" />
-        </div>
-        <div class="paint-field full">
-          <label>Color name</label>
-          <input type="text" value="${it.colorName}" placeholder="e.g. Canvas Tan SW 7531" oninput="updatePaintField('${it.uid}','colorName',this.value)" />
-        </div>
-      </div>
-    </div>`).join("");
-  if (typeof updateSubmitBarSummary === "function") updateSubmitBarSummary();
-}
-
 // ── BUILD SUMMARIES ──
 function buildSundrySummary() {
   const nonPPE = cart.filter(it => !it.type.includes("PPE"));
@@ -876,14 +796,13 @@ function buildSundrySummary() {
   };
 }
 
-function buildPaintSummary() {
-  return paintCart.map((it, i) =>
-    `Item ${i+1}: ${it.name}\n` +
-    `  Sage ID: ${it.sageId} | Vendor: ${it.vendorId || "—"}\n` +
-    `  Gallons: ${it.gallons} | Substrate: ${it.substrate || "—"}\n` +
-    `  Color #: ${it.colorNum || "N/A"} | Match #: ${it.matchNum || "N/A"}\n` +
-    `  Color name: ${it.colorName || "N/A"}`
-  ).join("\r\n\r\n");
+function getPaintLineItems() {
+  // Read gallon quantities from the rendered submittal lines
+  return submittals.map((s, i) => {
+    const gallonsEl = document.getElementById(`gallons-${i}`);
+    const gallons = gallonsEl ? parseFloat(gallonsEl.value) || 0 : 0;
+    return { ...s, gallons };
+  }).filter(s => s.gallons > 0);
 }
 
 // ── UNIFIED SUBMIT ──
@@ -894,10 +813,11 @@ async function submitAllOrders() {
   if (!selectedJob) { alert("Please select a job on the Job Info tab."); return; }
 
   const hasSundries = cart.length > 0;
-  const hasPaint = paintCart.length > 0;
+  const paintLineItems = getPaintLineItems();
+  const hasPaint = paintLineItems.length > 0;
 
   if (!hasSundries && !hasPaint) {
-    alert("Please add at least one item on the Sundries or Paint tab before submitting.");
+    alert("Please add at least one sundry item or enter gallons for at least one paint item before submitting.");
     return;
   }
 
@@ -938,8 +858,7 @@ async function submitAllOrders() {
           PickupOrDelivery: pickupLocation,
           DeliveryDate: timeVal ? new Date(timeVal).toISOString() : null,
           DeliveryNotes: document.getElementById("delivery-notes").value.trim() || null,
-          ItemsSummary: buildPaintSummary(),
-          ItemCount: paintCart.length,
+          lineItems: paintLineItems,
           Urgent: isUrgent
         }).catch(e => errors.push(`Paint order: ${e.message}`))
       );
@@ -971,8 +890,8 @@ async function submitAllOrders() {
 
 // ── RESET ──
 function resetAll() {
-  cart = []; paintCart = []; selectedJob = null; pickupLocation = "SC Shop"; isUrgent = false;
-  filteredJobs = [...allJobs]; filteredItems = [...allItems]; filteredMAT = [...allMAT];
+  cart = []; paintCart = []; submittals = []; selectedJob = null; pickupLocation = "SC Shop"; isUrgent = false;
+  filteredJobs = [...allJobs]; filteredItems = [...allItems];
   ["orderer-name","orderer-email","job-search","sundry-notes","paint-notes","delivery-notes","delivery-window"].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = "";
   });
@@ -981,9 +900,12 @@ function resetAll() {
   clearAutofill();
   setPickup("SC Shop");
   renderCart();
-  renderPaintCart();
+  const paintEl = document.getElementById("paint-items");
+  if (paintEl) paintEl.innerHTML = '<div class="cart-empty">Select a job on the Job Info tab to see approved paint items.</div>';
   document.getElementById("success-view").style.display = "none";
   document.querySelector(".tab-bar").style.display = "flex";
+  const submitBarEl = document.getElementById("submit-bar");
+  if (submitBarEl) submitBarEl.style.display = "none";
   document.querySelectorAll(".tab-btn").forEach(b => { b.classList.remove("active"); b.disabled = false; });
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
   document.querySelector(".tab-btn").classList.add("active");
@@ -998,7 +920,7 @@ function hide(id) { const el = document.getElementById(id); if (el) el.style.dis
 function showError(id, msg) { const el = document.getElementById(id); if (el) { el.textContent = msg; el.style.display = "block"; } }
 
 document.addEventListener("click", function(e) {
-  ["job-search|mpi-dropdown","item-search|item-dropdown","mat-search|mat-dropdown"].forEach(pair => {
+  ["job-search|mpi-dropdown","item-search|item-dropdown"].forEach(pair => {
     const [inputId, ddId] = pair.split("|");
     const inp = document.getElementById(inputId);
     const dd = document.getElementById(ddId);
@@ -1008,7 +930,7 @@ document.addEventListener("click", function(e) {
 
 // ── INIT ──
 (async () => {
-  if (!CLIENT_ID) { show("auth-banner"); await Promise.all([loadMPI(), loadItems(), loadMAT()]); hide("auth-banner"); return; }
+  if (!CLIENT_ID) { show("auth-banner"); await Promise.all([loadMPI(), loadItems()]); hide("auth-banner"); return; }
   try {
     msalInstance = new msal.PublicClientApplication({
       auth: { clientId: CLIENT_ID, authority: `https://login.microsoftonline.com/${TENANT_ID}` },
@@ -1023,7 +945,7 @@ document.addEventListener("click", function(e) {
         account: accounts[0]
       });
       accessToken = result.accessToken;
-      await Promise.all([loadMPI(), loadItems(), loadMAT()]);
+      await Promise.all([loadMPI(), loadItems()]);
       hide("auth-banner");
     } else {
       show("signin-banner");
@@ -1046,10 +968,10 @@ document.addEventListener("click", function(e) {
 <script>
 function updateSubmitBarSummary() {
   const sunCount = cart.length;
-  const paintCount = paintCart.length;
+  const paintCount = getPaintLineItems ? getPaintLineItems().length : 0;
   const parts = [];
   if (sunCount) parts.push(`${sunCount} sundry item${sunCount !== 1 ? "s" : ""}`);
-  if (paintCount) parts.push(`${paintCount} paint product${paintCount !== 1 ? "s" : ""}`);
+  if (paintCount) parts.push(`${paintCount} paint item${paintCount !== 1 ? "s" : ""}`);
   const el = document.getElementById("submit-bar-summary");
   if (el) el.textContent = parts.length ? parts.join(" + ") : "Add items to submit";
 }
