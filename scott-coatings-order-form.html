@@ -398,18 +398,25 @@ async function getToken() {
   if (accessToken) return accessToken;
   if (!CLIENT_ID) return null;
   try {
-    if (msalInstance) {
-      const accounts = msalInstance.getAllAccounts();
-      if (accounts.length > 0) {
-        const result = await msalInstance.acquireTokenSilent({
-          scopes: ["https://scottcoatings.sharepoint.com/.default"],
-          account: accounts[0]
-        });
-        accessToken = result.accessToken;
-        return accessToken;
-      }
+    if (!msalInstance) {
+      msalInstance = new msal.PublicClientApplication({
+        auth: { clientId: CLIENT_ID, authority: `https://login.microsoftonline.com/${TENANT_ID}` },
+        cache: { cacheLocation: "sessionStorage" }
+      });
+      await msalInstance.initialize();
     }
-  } catch (e) { console.warn("Silent token failed:", e); }
+    const accounts = msalInstance.getAllAccounts();
+    if (accounts.length > 0) {
+      const result = await msalInstance.acquireTokenSilent({
+        scopes: ["https://scottcoatings.sharepoint.com/.default"],
+        account: accounts[0]
+      });
+      accessToken = result.accessToken;
+      return accessToken;
+    }
+  } catch (e) {
+    console.warn("Silent token failed:", e);
+  }
   return null;
 }
 
@@ -484,6 +491,24 @@ async function loadItems() {
 async function loadSubmittals(jobId) {
   show("mat-loading"); hide("mat-error");
   try {
+    // Ensure we have a valid token before calling proxy
+    let token = await getToken();
+    if (!token && msalInstance) {
+      // Try silent refresh one more time
+      const accounts = msalInstance.getAllAccounts();
+      if (accounts.length > 0) {
+        const result = await msalInstance.acquireTokenSilent({
+          scopes: ["https://scottcoatings.sharepoint.com/.default"],
+          account: accounts[0]
+        });
+        accessToken = result.accessToken;
+        token = accessToken;
+      }
+    }
+    if (!token) {
+      showError("mat-error", "Not signed in. Please sign in on the Job Info tab first.");
+      return;
+    }
     const data = await proxyGet(`getSubmittals&jobId=${jobId}`);
     submittals = data.items || [];
     renderSubmittals();
