@@ -882,7 +882,7 @@ async function submitAllOrders() {
           JobNameId: selectedJob.id,
           PickupOrDelivery: pickupLocation,
           DeliveryDate: timeVal ? new Date(timeVal).toISOString() : null,
-          DeliveryNotes: document.getElementById("delivery-notes").value.trim() || null,
+          DeliveryNotes: [document.getElementById("delivery-notes").value.trim(), document.getElementById("paint-notes").value.trim()].filter(Boolean).join("\n\n") || null,
           lineItems: paintLineItems,
           Urgent: isUrgent
         }).catch(e => errors.push(`Paint order: ${e.message}`))
