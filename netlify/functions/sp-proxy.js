@@ -187,7 +187,7 @@ async function getSubmittals(token, headers, params) {
 
   const url =
     `${SITE}/_api/web/lists/getbytitle('Submittals')/items` +
-    `?$select=Id,Title,ProjectNameId,Product/Title,Product/Description,ColorName,Color_x0023_,ColorDesignation,Surface,LocationofWork,ReadyforOrderForm` +
+    `?$select=Id,Title,ProjectNameId,Product/Title,Product/Description,Product/VendorID,Product/Manufacturer,ColorName,Color_x0023_,ColorDesignation,Surface,LocationofWork,ReadyforOrderForm` +
     `&$expand=Product` +
     `&$filter=ProjectNameId eq ${jobId} and ReadyforOrderForm eq 1` +
     `&$top=500`;
@@ -198,6 +198,8 @@ async function getSubmittals(token, headers, params) {
     id: r.Id,
     productName: cleanProductName(r.Product?.Description || r.Product?.Title || ""),
     sageId: cleanSageId(r.Product?.Title || ""),
+    vendorId: r.Product?.VendorID || "",
+    manufacturer: r.Product?.Manufacturer || "",
     colorName: r.ColorName || "",
     colorNum: r.Color_x0023_ || "",
     colorDesig: r.ColorDesignation || "",
@@ -236,14 +238,26 @@ async function submitPaintOrder(token, headers, rawBody) {
   if (!rawBody) throw new Error("No body provided");
   const p = JSON.parse(rawBody);
 
-  // Build items summary — only include lines where gallons > 0
+  // Build items summary grouped by vendor
   const lineItems = (p.lineItems || []).filter(l => l.gallons > 0);
-  const itemsSummary = lineItems.map(l =>
-    `${l.productName} [Sage ID: ${l.sageId}]\n` +
-    `  Surface: ${l.surface || "—"} | Color: ${l.colorDesig || "—"} ${l.colorName || ""}` +
-    `${l.colorNum ? " | Match #: " + l.colorNum : ""}\n` +
-    `  Gallons needed: ${l.gallons}`
-  ).join("\n\n");
+
+  // Group by vendor
+  const byVendor = {};
+  lineItems.forEach(l => {
+    const vendor = l.manufacturer || l.vendorId || "Other";
+    if (!byVendor[vendor]) byVendor[vendor] = [];
+    byVendor[vendor].push(l);
+  });
+
+  const itemsSummary = Object.entries(byVendor).map(([vendor, items]) => {
+    const lines = items.map(l =>
+      `  • ${l.productName} [Sage ID: ${l.sageId}]\n` +
+      `    Surface: ${l.surface || "—"} | Color: ${l.colorDesig || "—"} ${l.colorName || ""}` +
+      `${l.colorNum ? " | Match #: " + l.colorNum : ""}\n` +
+      `    Gallons needed: ${l.gallons}`
+    ).join("\n\n");
+    return `VENDOR: ${vendor}\n${lines}`;
+  }).join("\n\n---\n\n");
 
   await spPostItem(PAINT_ORDERS_LIST, {
     Title: p.Title,
