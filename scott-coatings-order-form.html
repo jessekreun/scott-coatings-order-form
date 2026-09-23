@@ -397,7 +397,6 @@ let pendingTipItem = null;
 
 // ── MSAL AUTH ──
 async function getToken() {
-  if (accessToken) return accessToken;
   if (!CLIENT_ID) return null;
   try {
     if (!msalInstance) {
@@ -408,16 +407,23 @@ async function getToken() {
       await msalInstance.initialize();
     }
     const accounts = msalInstance.getAllAccounts();
-    if (accounts.length > 0) {
-      const result = await msalInstance.acquireTokenSilent({
-        scopes: ["https://scottcoatings.sharepoint.com/.default"],
-        account: accounts[0]
-      });
+    if (accounts.length === 0) return null;
+    const request = {
+      scopes: ["https://scottcoatings.sharepoint.com/.default"],
+      account: accounts[0]
+    };
+    try {
+      const result = await msalInstance.acquireTokenSilent(request);
+      accessToken = result.accessToken;
+      return accessToken;
+    } catch (e) {
+      console.warn("Silent token failed, prompting re-auth:", e);
+      const result = await msalInstance.acquireTokenPopup(request);
       accessToken = result.accessToken;
       return accessToken;
     }
   } catch (e) {
-    console.warn("Silent token failed:", e);
+    console.warn("Token acquisition failed:", e);
   }
   return null;
 }
@@ -1005,3 +1011,4 @@ function updateSubmitBarSummary() {
 </script>
 </body>
 </html>
+
